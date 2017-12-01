@@ -36,10 +36,12 @@ PORT_ENV_VAR_NAME = 'PDC_CLIENT_TEST_SERVER_PORT'
 DEFAULT_PORT = 8378
 
 API_PATH = '/rest_api/v1'
+TOKEN = 'TESTTOKEN'
 
 HTTP_OK = 200
 HTTP_NO_CONTENT = 204
 HTTP_BAD_REQUEST = 400
+HTTP_UNAUTHORIZED = 401
 HTTP_NOT_FOUND = 404
 HTTP_INTERNAL_SERVER_ERROR = 500
 
@@ -94,13 +96,6 @@ class _MockPDCServerRequestHandler(BaseHTTPRequestHandler, object):
                 "cpe": "cpe:/o:redhat:enterprise_linux:7::workstation",
                 "description": "RHEL 7 Workstation",
                 "id": 1
-            }
-        },
-        'auth': {
-            'token': {
-                'obtain': {
-                    'token': '1'
-                }
             }
         }
     }
@@ -165,10 +160,7 @@ class _MockPDCServerRequestHandler(BaseHTTPRequestHandler, object):
 
     def _do_GET(self, item, parent_item, pk, request):
         status_code = HTTP_OK
-        if item == self.data['auth']['token']['obtain'] and request:
-            status_code = HTTP_BAD_REQUEST
-            data = {}
-        elif item == self.data['products'] and 'short' in request:
+        if item == self.data['products'] and 'short' in request:
             short = request['short']
             status_code, data = _paged_results([item[short]], request)
         elif item in self.data.values():
@@ -203,8 +195,12 @@ class _MockPDCServerRequestHandler(BaseHTTPRequestHandler, object):
 
     def _do(self, method):
         try:
-            item, parent_item, pk, request = self._get_data_item_and_request()
-            status_code, data = method(item, parent_item, pk, request)
+            if self.headers.get('Authorization') != 'Token ' + TOKEN:
+                status_code = HTTP_UNAUTHORIZED
+                data = {}
+            else:
+                item, parent_item, pk, request = self._get_data_item_and_request()
+                status_code, data = method(item, parent_item, pk, request)
             self._send_response(status_code, data)
         except self.HttpNotFoundError:
             self._send_response(HTTP_NOT_FOUND, '')
@@ -214,7 +210,10 @@ class _MockPDCServerRequestHandler(BaseHTTPRequestHandler, object):
             self._send_response(HTTP_INTERNAL_SERVER_ERROR, data)
 
     def do_GET(self):
-        self._do(self._do_GET)
+        if self.path == API_PATH + '/auth/token/obtain/':
+            self._send_response(HTTP_OK, {'token': TOKEN})
+        else:
+            self._do(self._do_GET)
 
     def do_POST(self):
         self._do(self._do_POST)
