@@ -39,6 +39,7 @@ API_PATH = '/rest_api/v1'
 
 HTTP_OK = 200
 HTTP_NO_CONTENT = 204
+HTTP_BAD_REQUEST = 400
 HTTP_NOT_FOUND = 404
 HTTP_INTERNAL_SERVER_ERROR = 500
 
@@ -164,7 +165,10 @@ class _MockPDCServerRequestHandler(BaseHTTPRequestHandler, object):
 
     def _do_GET(self, item, parent_item, pk, request):
         status_code = HTTP_OK
-        if item == self.data['products'] and 'short' in request:
+        if item == self.data['auth']['token']['obtain'] and request:
+            status_code = HTTP_BAD_REQUEST
+            data = {}
+        elif item == self.data['products'] and 'short' in request:
             short = request['short']
             status_code, data = _paged_results([item[short]], request)
         elif item in self.data.values():
@@ -441,3 +445,12 @@ class PDCClientTestCase(unittest.TestCase):
         products = list(self.client.get_paged(self.client.products, short='fedora'))
         self.assertEqual(len(products), 1)
         self.assertEqual(products[0]['short'], 'fedora')
+
+    def test_page_size(self):
+        self.client = PDCClient(
+            server=self.url,
+            ssl_verify=False,
+            page_size=99
+        )
+        products = list(self.client.products.results())
+        self.assertEqual(len(products), 2)
